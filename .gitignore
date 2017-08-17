@@ -1,0 +1,8 @@
+# Python 3 cache
+__pycache__
+
+# Node modules
+node_modules
+
+# Trivia games database file
+trivia-game.db
