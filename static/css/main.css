@@ -21,14 +21,6 @@ body {
     max-width: 300px;
 }
 
-.left {
-    float: left;
-}
-
-.right {
-    float: right;
-}
-
 /*
 *   Object classes
 */

@@ -2,7 +2,7 @@ import sqlite3
 
 class DB:
 
-    def query(query, data=None, limit=None):
+    def query(query, data=None):
         conn = sqlite3.connect("trivia-game.db")
 
         cur = conn.cursor()
@@ -14,6 +14,7 @@ class DB:
                 lives,
                 score,
                 question_count,
+                multiplier,
                 time_stamp
             );
         """)
@@ -24,9 +25,6 @@ class DB:
             cur.execute(query, data)
 
         result = cur.fetchall()
-
-        if limit is not None:
-            result = result[:limit]
 
         conn.commit()
         conn.close()

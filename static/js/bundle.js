@@ -22581,12 +22581,14 @@ var Menu = function (_React$Component) {
                 var token = tokenJSON.token;
                 var lives = tokenJSON.lives;
                 var score = tokenJSON.score;
+                var multiplier = tokenJSON.multiplier;
                 var questionCount = tokenJSON.question_count;
 
-                this.props.setGameState({ token: token, lives: lives, score: score, questionCount: questionCount });
+                this.props.setGameState({ token: token, lives: lives, score: score, multiplier: multiplier, questionCount: questionCount });
 
                 this.props.transition();
             } else {
+                alert("An error occurred when requesting the token, please refer to the server logs");
                 throw new Error("Token request error");
             }
         }
@@ -22597,7 +22599,7 @@ var Menu = function (_React$Component) {
                 'div',
                 null,
                 _react2.default.createElement(
-                    'p',
+                    'h2',
                     null,
                     'Menu'
                 ),
@@ -22657,7 +22659,9 @@ var Game = function (_React$Component) {
                 answers: []
             },
 
-            time: 0
+            time: 0,
+
+            locked: true
         };
 
         _this.nextQuestion = _this.nextQuestion.bind(_this);
@@ -22669,6 +22673,7 @@ var Game = function (_React$Component) {
         key: "componentDidMount",
         value: function componentDidMount() {
             if (!this.props.gameState.token) {
+                alert("No game token was found, please make sure you followed proper procedure for starting a game");
                 throw new Error("No game token found");
             }
 
@@ -22679,13 +22684,13 @@ var Game = function (_React$Component) {
         value: function startTimer() {
             var _this2 = this;
 
+            this.clearTimer();
+
             this.timerInterval = window.setInterval(function () {
-                console.log("> timerInterval");
                 _this2.setState({ time: _this2.state.time - 1 });
             }, 1000);
 
             this.timerTimeout = window.setTimeout(function () {
-                console.log("> timerTimeout");
                 _this2.submitAnswer("");
             }, 10100);
         }
@@ -22696,70 +22701,85 @@ var Game = function (_React$Component) {
             window.clearTimeout(this.timerTimeout);
         }
     }, {
-        key: "checkForGameOver",
-        value: function checkForGameOver() {
-            if (this.props.gameState.lives <= 0) {
-                this.props.setGameState({ gameOverMessage: 'You lost' });
-                this.clearTimer();
-                this.props.transition();
-                return true;
-            } else if (this.props.gameState.questionCount >= 50) {
-                this.props.setGameState({ gameOverMessage: 'You win' });
-                this.clearTimer();
-                this.props.transition();
-                return true;
-            }
-
-            return false;
+        key: "setLock",
+        value: function setLock(state) {
+            this.setState({ locked: state });
         }
     }, {
         key: "nextQuestion",
         value: async function nextQuestion() {
-            if (!this.checkForGameOver()) {
+            if (this.state.locked) {
+                this.setLock(false);
+
                 var questionResp = await fetch("/next?token=" + this.props.gameState.token);
                 var questionJSON = await questionResp.json();
 
-                this.cleanAnswers();
+                if (questionResp.ok) {
+                    this.cleanAnswers();
 
-                this.setState({ question: questionJSON.question, time: questionJSON.time });
+                    this.setState({ question: questionJSON.question, time: questionJSON.time });
 
-                this.startTimer();
+                    this.startTimer();
+                } else {
+                    alert("An error occurred when requesting a new question, please refer to the server logs");
+                    throw new Error("Question request error");
+                }
             }
         }
     }, {
         key: "submitAnswer",
         value: async function submitAnswer(answer) {
-            this.clearTimer();
+            var _this3 = this;
 
-            var answerResp = await fetch("/submit?token=" + this.props.gameState.token + "&answer=" + answer);
-            var answerJSON = await answerResp.json();
+            if (!this.state.locked) {
+                this.setLock(true);
+                this.clearTimer();
 
-            var answers = document.getElementsByClassName('answer');
+                var answerResp = await fetch("/submit?token=" + this.props.gameState.token + "&answer=" + answer);
+                var answerJSON = await answerResp.json();
 
-            for (var i = 0; i < answers.length; i++) {
-                if (answers[i].getAttribute('data-answer') == answerJSON.answer) {
-                    answers[i].classList.add('correct');
-                } else if (answers[i].getAttribute('data-answer') == answer) {
-                    answers[i].classList.add('incorrect');
+                if (answerResp.ok) {
+                    var answers = document.getElementsByClassName('answer');
+
+                    for (var i = 0; i < answers.length; i++) {
+                        if (answers[i].getAttribute('data-answer') == answerJSON.answer) {
+                            answers[i].classList.add('correct');
+                        } else if (answers[i].getAttribute('data-answer') == answer) {
+                            answers[i].classList.add('incorrect');
+                        } else {
+                            answers[i].classList.add('invalid');
+                        }
+                    }
+
+                    this.props.setGameState({ lives: answerJSON.lives, score: answerJSON.score, multiplier: answerJSON.multiplier, questionCount: answerJSON.question_count });
+
+                    if (answerJSON.game_over) {
+                        window.setTimeout(function () {
+                            _this3.props.setGameState({ gameOverMessage: answerJSON.game_over == 'win' ? 'You win' : 'You lost' });
+                            _this3.clearTimer();
+                            _this3.props.transition();
+                        }, 2000);
+                    } else {
+                        window.setTimeout(this.nextQuestion, 2000);
+                    }
                 } else {
-                    answers[i].classList.add('invalid');
+                    alert("An error occurred when submitting your answer, please refer to the server logs");
+                    throw new Error("Answer submit error");
                 }
+            } else {
+                console.log("Submission locked!");
             }
-
-            this.props.setGameState({ lives: answerJSON.lives, score: answerJSON.score, questionCount: answerJSON.question_count });
-
-            window.setTimeout(this.nextQuestion, 2000);
         }
     }, {
         key: "listAnswers",
         value: function listAnswers() {
-            var _this3 = this;
+            var _this4 = this;
 
             return this.state.question.answers.map(function (answer, index) {
                 return _react2.default.createElement(
                     "div",
                     { className: "button answer", "data-answer": answer, key: index, onClick: function onClick() {
-                            _this3.submitAnswer(answer);
+                            _this4.submitAnswer(answer);
                         } },
                     _react2.default.createElement(
                         "span",
@@ -22786,7 +22806,7 @@ var Game = function (_React$Component) {
                 null,
                 _react2.default.createElement(
                     "div",
-                    { className: "stats wrap slim" },
+                    { className: "stats wrap" },
                     _react2.default.createElement(
                         "div",
                         { className: "stat lives" },
@@ -22800,14 +22820,14 @@ var Game = function (_React$Component) {
                     ),
                     _react2.default.createElement(
                         "div",
-                        { className: "stat time" },
+                        { className: "stat multiplier" },
                         _react2.default.createElement(
                             "strong",
                             null,
-                            "Time"
+                            "Multiplier"
                         ),
                         _react2.default.createElement("br", null),
-                        this.state.time
+                        this.props.gameState.multiplier
                     ),
                     _react2.default.createElement(
                         "div",
@@ -22831,6 +22851,21 @@ var Game = function (_React$Component) {
                         ),
                         _react2.default.createElement("br", null),
                         this.props.gameState.score
+                    )
+                ),
+                _react2.default.createElement(
+                    "div",
+                    { className: "stats wrap" },
+                    _react2.default.createElement(
+                        "div",
+                        { className: "stat time" },
+                        _react2.default.createElement(
+                            "strong",
+                            null,
+                            "Time"
+                        ),
+                        _react2.default.createElement("br", null),
+                        this.state.time
                     )
                 ),
                 _react2.default.createElement(
@@ -22893,19 +22928,19 @@ var Done = function (_React$Component) {
                 'div',
                 null,
                 _react2.default.createElement(
-                    'h1',
+                    'h2',
                     null,
                     'Game Over'
                 ),
                 _react2.default.createElement(
-                    'h2',
+                    'h3',
                     null,
                     this.props.gameState.gameOverMessage
                 ),
                 _react2.default.createElement(
-                    'h3',
+                    'h4',
                     null,
-                    'Final score:'
+                    'Final score'
                 ),
                 _react2.default.createElement(
                     'div',

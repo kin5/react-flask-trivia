@@ -13,7 +13,9 @@ export default class Game extends React.Component {
                 answers: []
             },
 
-            time: 0
+            time: 0,
+
+            locked: true
         };
 
         this.nextQuestion = this.nextQuestion.bind(this);
@@ -22,6 +24,7 @@ export default class Game extends React.Component {
 
     componentDidMount() {
         if(!this.props.gameState.token) {
+            alert("No game token was found, please make sure you followed proper procedure for starting a game");
             throw new Error("No game token found");
         }
 
@@ -29,13 +32,13 @@ export default class Game extends React.Component {
     }
 
     startTimer() {
+        this.clearTimer();
+        
         this.timerInterval = window.setInterval(() => {
-            console.log("> timerInterval");
             this.setState({ time: this.state.time - 1 });
         }, 1000);
 
         this.timerTimeout = window.setTimeout(() => {
-            console.log("> timerTimeout");
             this.submitAnswer("");
         }, 10100);
     }
@@ -45,59 +48,75 @@ export default class Game extends React.Component {
         window.clearTimeout(this.timerTimeout);
     }
 
-    checkForGameOver() {
-        if(this.props.gameState.lives <= 0) {
-            this.props.setGameState({ gameOverMessage: 'You lost' });
-            this.clearTimer();
-            this.props.transition();
-            return true;
-        }
-        else if(this.props.gameState.questionCount >= 50) {
-            this.props.setGameState({ gameOverMessage: 'You win' });
-            this.clearTimer();
-            this.props.transition();
-            return true;
-        }
-
-        return false;
+    setLock(state) {
+        this.setState({ locked: state });
     }
 
     async nextQuestion() {
-        if(!this.checkForGameOver()) {
+        if(this.state.locked) {
+            this.setLock(false);
+
             let questionResp = await fetch("/next?token=" + this.props.gameState.token);
             let questionJSON = await questionResp.json();
 
-            this.cleanAnswers();
+            if(questionResp.ok) {
+                this.cleanAnswers();
 
-            this.setState({ question: questionJSON.question, time: questionJSON.time });
+                this.setState({ question: questionJSON.question, time: questionJSON.time });
 
-            this.startTimer();
+                this.startTimer();
+            }
+            else {
+                alert("An error occurred when requesting a new question, please refer to the server logs");
+                throw new Error("Question request error");
+            }
         }
     }
 
     async submitAnswer(answer) {
-        this.clearTimer();
+        if(!this.state.locked) {
+            this.setLock(true);
+            this.clearTimer();
 
-        let answerResp = await fetch("/submit?token=" + this.props.gameState.token + "&answer=" + answer);
-        let answerJSON = await answerResp.json();
+            let answerResp = await fetch("/submit?token=" + this.props.gameState.token + "&answer=" + answer);
+            let answerJSON = await answerResp.json();
 
-        let answers = document.getElementsByClassName('answer');
+            if(answerResp.ok) {
+                let answers = document.getElementsByClassName('answer');
 
-        for(let i=0; i<answers.length; i++) {
-            if(answers[i].getAttribute('data-answer') == answerJSON.answer) {
-                answers[i].classList.add('correct');
-            }
-            else if(answers[i].getAttribute('data-answer') == answer) {
-                answers[i].classList.add('incorrect');
+                for(let i=0; i<answers.length; i++) {
+                    if(answers[i].getAttribute('data-answer') == answerJSON.answer) {
+                        answers[i].classList.add('correct');
+                    }
+                    else if(answers[i].getAttribute('data-answer') == answer) {
+                        answers[i].classList.add('incorrect');
+                    }
+                    else {
+                        answers[i].classList.add('invalid');
+                    }
+                }
+
+                this.props.setGameState({ lives: answerJSON.lives, score: answerJSON.score, multiplier: answerJSON.multiplier, questionCount: answerJSON.question_count });
+
+                if(answerJSON.game_over) {
+                    window.setTimeout(() => {
+                        this.props.setGameState({ gameOverMessage: answerJSON.game_over == 'win' ? 'You win' : 'You lost' });
+                        this.clearTimer();
+                        this.props.transition();
+                    }, 2000);
+                }
+                else {
+                    window.setTimeout(this.nextQuestion, 2000);
+                }
             }
             else {
-                answers[i].classList.add('invalid');
+                alert("An error occurred when submitting your answer, please refer to the server logs");
+                throw new Error("Answer submit error");
             }
         }
-
-        this.props.setGameState({ lives: answerJSON.lives, score: answerJSON.score, questionCount: answerJSON.question_count });
-
-        window.setTimeout(this.nextQuestion, 2000);
+        else {
+            console.log("Submission locked!");
+        }
     }
 
     listAnswers() {
@@ -121,16 +140,16 @@ export default class Game extends React.Component {
     render() {
         return (
             <div>
-                <div className="stats wrap slim">
+                <div className="stats wrap">
                     <div className="stat lives">
                         <strong>Lives</strong>
                         <br/>
                         {this.props.gameState.lives}
                     </div>
-                    <div className="stat time">
-                        <strong>Time</strong>
+                    <div className="stat multiplier">
+                        <strong>Multiplier</strong>
                         <br/>
-                        {this.state.time}
+                        {this.props.gameState.multiplier}
                     </div>
                     <div className="stat count">
                         <strong>Question</strong>
@@ -141,6 +160,14 @@ export default class Game extends React.Component {
                         <strong>Score</strong>
                         <br/>
                         {this.props.gameState.score}
+                    </div>
+                </div>
+
+                <div className="stats wrap">
+                    <div className="stat time">
+                        <strong>Time</strong>
+                        <br/>
+                        {this.state.time}
                     </div>
                 </div>
 
