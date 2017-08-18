@@ -1,6 +1,8 @@
 # React Python Trivia
 A small trivia game made with React, Flask, and SQLite.
 
+Leveraging the amazing [OpenTDB](https://opentdb.com/).
+
 ## Prerequisites
 + Node
 + NPM
